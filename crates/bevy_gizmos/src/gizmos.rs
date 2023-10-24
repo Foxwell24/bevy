@@ -1,4 +1,4 @@
-//! A module for the [`Gizmos`] [`SystemParam`].
+//! A module for the [`Gizmos`](crate::gizmos::Gizmos) [`SystemParam`](bevy_ecs::system::SystemParam).
 
 use std::{f32::consts::TAU, iter};
 
@@ -23,7 +23,7 @@ pub(crate) struct GizmoStorage {
     pub strip_colors: Vec<ColorItem>,
 }
 
-/// A [`SystemParam`] for drawing gizmos.
+/// A [`SystemParam`](bevy_ecs::system::SystemParam) for drawing gizmos.
 ///
 /// They are drawn in immediate mode, which means they will be rendered only for
 /// the frames in which they are spawned.
@@ -152,7 +152,7 @@ impl<'s> Gizmos<'s> {
     /// ```
     #[inline]
     pub fn linestrip(&mut self, positions: impl IntoIterator<Item = Vec3>, color: Color) {
-        self.extend_strip_positions(positions);
+        self.extend_strip_positions(positions.into_iter());
         let len = self.buffer.strip_positions.len();
         self.buffer
             .strip_colors
@@ -614,7 +614,7 @@ pub struct CircleBuilder<'a, 's> {
 }
 
 impl CircleBuilder<'_, '_> {
-    /// Set the number of line-segments for this circle.
+    /// Set the number of line-segements for this circle.
     pub fn segments(mut self, segments: usize) -> Self {
         self.segments = segments;
         self
@@ -641,7 +641,7 @@ pub struct SphereBuilder<'a, 's> {
 }
 
 impl SphereBuilder<'_, '_> {
-    /// Set the number of line-segments per circle for this sphere.
+    /// Set the number of line-segements per circle for this sphere.
     pub fn circle_segments(mut self, segments: usize) -> Self {
         self.circle_segments = segments;
         self
@@ -668,7 +668,7 @@ pub struct Circle2dBuilder<'a, 's> {
 }
 
 impl Circle2dBuilder<'_, '_> {
-    /// Set the number of line-segments for this circle.
+    /// Set the number of line-segements for this circle.
     pub fn segments(mut self, segments: usize) -> Self {
         self.segments = segments;
         self
@@ -694,7 +694,7 @@ pub struct Arc2dBuilder<'a, 's> {
 }
 
 impl Arc2dBuilder<'_, '_> {
-    /// Set the number of line-segments for this arc.
+    /// Set the number of line-segements for this arc.
     pub fn segments(mut self, segments: usize) -> Self {
         self.segments = Some(segments);
         self

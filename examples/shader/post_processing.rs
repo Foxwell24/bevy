@@ -6,37 +6,47 @@
 //! This is a fairly low level example and assumes some familiarity with rendering concepts and wgpu.
 
 use bevy::{
+    asset::ChangeWatcher,
     core_pipeline::{
         clear_color::ClearColorConfig, core_3d,
         fullscreen_vertex_shader::fullscreen_shader_vertex_state,
     },
-    ecs::query::QueryItem,
     prelude::*,
     render::{
         extract_component::{
             ComponentUniforms, ExtractComponent, ExtractComponentPlugin, UniformComponentPlugin,
         },
-        render_graph::{
-            NodeRunError, RenderGraphApp, RenderGraphContext, ViewNode, ViewNodeRunner,
-        },
+        render_graph::{NodeRunError, RenderGraphApp, RenderGraphContext},
         render_resource::{
-            BindGroupEntries, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry,
-            BindingType, CachedRenderPipelineId, ColorTargetState, ColorWrites, FragmentState,
-            MultisampleState, Operations, PipelineCache, PrimitiveState, RenderPassColorAttachment,
-            RenderPassDescriptor, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-            SamplerDescriptor, ShaderStages, ShaderType, TextureFormat, TextureSampleType,
-            TextureViewDimension,
+            BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+            BindGroupLayoutEntry, BindingResource, BindingType, CachedRenderPipelineId,
+            ColorTargetState, ColorWrites, FragmentState, MultisampleState, Operations,
+            PipelineCache, PrimitiveState, RenderPassColorAttachment, RenderPassDescriptor,
+            RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
+            ShaderType, TextureFormat, TextureSampleType, TextureViewDimension,
         },
         renderer::{RenderContext, RenderDevice},
         texture::BevyDefault,
         view::ViewTarget,
         RenderApp,
     },
+    utils::Duration,
+};
+use bevy_internal::{
+    ecs::query::QueryItem,
+    render::render_graph::{ViewNode, ViewNodeRunner},
 };
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, PostProcessPlugin))
+        .add_plugins((
+            DefaultPlugins.set(AssetPlugin {
+                // Hot reloading the shader works correctly
+                watch_for_changes: ChangeWatcher::with_delay(Duration::from_millis(200)),
+                ..default()
+            }),
+            PostProcessPlugin,
+        ))
         .add_systems(Startup, setup)
         .add_systems(Update, (rotate, update_settings))
         .run();
@@ -114,7 +124,7 @@ impl Plugin for PostProcessPlugin {
 #[derive(Default)]
 struct PostProcessNode;
 impl PostProcessNode {
-    pub const NAME: &'static str = "post_process";
+    pub const NAME: &str = "post_process";
 }
 
 // The ViewNode trait is required by the ViewNodeRunner
@@ -149,8 +159,7 @@ impl ViewNode for PostProcessNode {
         let pipeline_cache = world.resource::<PipelineCache>();
 
         // Get the pipeline from the cache
-        let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id)
-        else {
+        let Some(pipeline) = pipeline_cache.get_render_pipeline(post_process_pipeline.pipeline_id) else {
             return Ok(());
         };
 
@@ -176,19 +185,30 @@ impl ViewNode for PostProcessNode {
         // The reason it doesn't work is because each post_process_write will alternate the source/destination.
         // The only way to have the correct source/destination for the bind_group
         // is to make sure you get it during the node execution.
-        let bind_group = render_context.render_device().create_bind_group(
-            "post_process_bind_group",
-            &post_process_pipeline.layout,
-            // It's important for this to match the BindGroupLayout defined in the PostProcessPipeline
-            &BindGroupEntries::sequential((
-                // Make sure to use the source view
-                post_process.source,
-                // Use the sampler created for the pipeline
-                &post_process_pipeline.sampler,
-                // Set the settings binding
-                settings_binding.clone(),
-            )),
-        );
+        let bind_group = render_context
+            .render_device()
+            .create_bind_group(&BindGroupDescriptor {
+                label: Some("post_process_bind_group"),
+                layout: &post_process_pipeline.layout,
+                // It's important for this to match the BindGroupLayout defined in the PostProcessPipeline
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        // Make sure to use the source view
+                        resource: BindingResource::TextureView(post_process.source),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        // Use the sampler created for the pipeline
+                        resource: BindingResource::Sampler(&post_process_pipeline.sampler),
+                    },
+                    BindGroupEntry {
+                        binding: 2,
+                        // Set the settings binding
+                        resource: settings_binding.clone(),
+                    },
+                ],
+            });
 
         // Begin the render pass
         let mut render_pass = render_context.begin_tracked_render_pass(RenderPassDescriptor {
@@ -289,8 +309,8 @@ impl FromWorld for PostProcessPipeline {
                         write_mask: ColorWrites::ALL,
                     })],
                 }),
-                // All of the following properties are not important for this effect so just use the default values.
-                // This struct doesn't have the Default trait implemented because not all field can have a default value.
+                // All of the following property are not important for this effect so just use the default values.
+                // This struct doesn't have the Default trai implemented because not all field can have a default value.
                 primitive: PrimitiveState::default(),
                 depth_stencil: None,
                 multisample: MultisampleState::default(),

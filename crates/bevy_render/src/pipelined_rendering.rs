@@ -111,9 +111,7 @@ impl Plugin for PipelinedRenderingPlugin {
                         s.spawn(async { app_to_render_receiver.recv().await });
                     })
                     .pop();
-                let Some(Ok(mut render_app)) = sent_app else {
-                    break;
-                };
+                let Some(Ok(mut render_app)) = sent_app else { break };
 
                 {
                     #[cfg(feature = "trace")]

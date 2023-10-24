@@ -1,7 +1,6 @@
 use ab_glyph::{Font as _, FontArc, Glyph, PxScaleFont, ScaleFont as _};
-use bevy_asset::{AssetId, Assets};
+use bevy_asset::{Assets, Handle};
 use bevy_math::{Rect, Vec2};
-use bevy_reflect::Reflect;
 use bevy_render::texture::Image;
 use bevy_sprite::TextureAtlas;
 use bevy_utils::tracing::warn;
@@ -11,13 +10,13 @@ use glyph_brush_layout::{
 };
 
 use crate::{
-    error::TextError, BreakLineOn, Font, FontAtlasSet, FontAtlasSets, FontAtlasWarning,
-    GlyphAtlasInfo, TextAlignment, TextSettings, YAxisOrientation,
+    error::TextError, BreakLineOn, Font, FontAtlasSet, FontAtlasWarning, GlyphAtlasInfo,
+    TextAlignment, TextSettings, YAxisOrientation,
 };
 
 pub struct GlyphBrush {
     fonts: Vec<FontArc>,
-    asset_ids: Vec<AssetId<Font>>,
+    handles: Vec<Handle<Font>>,
     latest_font_id: FontId,
 }
 
@@ -25,7 +24,7 @@ impl Default for GlyphBrush {
     fn default() -> Self {
         GlyphBrush {
             fonts: Vec::new(),
-            asset_ids: Vec::new(),
+            handles: Vec::new(),
             latest_font_id: FontId(0),
         }
     }
@@ -58,7 +57,7 @@ impl GlyphBrush {
         &self,
         glyphs: Vec<SectionGlyph>,
         sections: &[SectionText],
-        font_atlas_sets: &mut FontAtlasSets,
+        font_atlas_set_storage: &mut Assets<FontAtlasSet>,
         fonts: &Assets<Font>,
         texture_atlases: &mut Assets<TextureAtlas>,
         textures: &mut Assets<Image>,
@@ -73,11 +72,11 @@ impl GlyphBrush {
         let sections_data = sections
             .iter()
             .map(|section| {
-                let asset_id = &self.asset_ids[section.font_id.0];
-                let font = fonts.get(*asset_id).ok_or(TextError::NoSuchFont)?;
+                let handle = &self.handles[section.font_id.0];
+                let font = fonts.get(handle).ok_or(TextError::NoSuchFont)?;
                 let font_size = section.scale.y;
                 Ok((
-                    asset_id,
+                    handle,
                     font,
                     font_size,
                     ab_glyph::Font::as_scaled(&font.font, font_size),
@@ -85,7 +84,7 @@ impl GlyphBrush {
             })
             .collect::<Result<Vec<_>, _>>()?;
 
-        let text_bounds = compute_text_bounds(&glyphs, |index| sections_data[index].3);
+        let text_bounds = compute_text_bounds(&glyphs, |index| &sections_data[index].3);
 
         let mut positioned_glyphs = Vec::new();
         for sg in glyphs {
@@ -101,10 +100,9 @@ impl GlyphBrush {
             let section_data = sections_data[sg.section_index];
             if let Some(outlined_glyph) = section_data.1.font.outline_glyph(glyph) {
                 let bounds = outlined_glyph.px_bounds();
-                let font_atlas_set = font_atlas_sets
-                    .sets
-                    .entry(*section_data.0)
-                    .or_insert_with(FontAtlasSet::default);
+                let handle_font_atlas: Handle<FontAtlasSet> = section_data.0.cast_weak();
+                let font_atlas_set = font_atlas_set_storage
+                    .get_or_insert_with(handle_font_atlas, FontAtlasSet::default);
 
                 let atlas_info = font_atlas_set
                     .get_glyph_atlas_info(section_data.2, glyph_id, glyph_position)
@@ -115,7 +113,7 @@ impl GlyphBrush {
 
                 if !text_settings.allow_dynamic_font_size
                     && !font_atlas_warning.warned
-                    && font_atlas_set.len() > text_settings.max_font_atlases.get()
+                    && font_atlas_set.num_font_atlases() > text_settings.max_font_atlases.get()
                 {
                     warn!("warning[B0005]: Number of font atlases has exceeded the maximum of {}. Performance and memory usage may suffer.", text_settings.max_font_atlases.get());
                     font_atlas_warning.warned = true;
@@ -150,16 +148,16 @@ impl GlyphBrush {
         Ok(positioned_glyphs)
     }
 
-    pub fn add_font(&mut self, asset_id: AssetId<Font>, font: FontArc) -> FontId {
+    pub fn add_font(&mut self, handle: Handle<Font>, font: FontArc) -> FontId {
         self.fonts.push(font);
-        self.asset_ids.push(asset_id);
+        self.handles.push(handle);
         let font_id = self.latest_font_id;
         self.latest_font_id = FontId(font_id.0 + 1);
         font_id
     }
 }
 
-#[derive(Debug, Clone, Reflect)]
+#[derive(Debug, Clone)]
 pub struct PositionedGlyph {
     pub position: Vec2,
     pub size: Vec2,
@@ -205,12 +203,12 @@ impl GlyphPlacementAdjuster {
 
 /// Computes the minimal bounding rectangle for a block of text.
 /// Ignores empty trailing lines.
-pub(crate) fn compute_text_bounds<T>(
+pub(crate) fn compute_text_bounds<'a, T>(
     section_glyphs: &[SectionGlyph],
-    get_scaled_font: impl Fn(usize) -> PxScaleFont<T>,
+    get_scaled_font: impl Fn(usize) -> &'a PxScaleFont<T>,
 ) -> bevy_math::Rect
 where
-    T: ab_glyph::Font,
+    T: ab_glyph::Font + 'a,
 {
     let mut text_bounds = Rect {
         min: Vec2::splat(std::f32::MAX),

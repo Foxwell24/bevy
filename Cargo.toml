@@ -1,6 +1,6 @@
 [package]
 name = "bevy"
-version = "0.12.0-dev"
+version = "0.11.3"
 edition = "2021"
 categories = ["game-engines", "graphics", "gui", "rendering"]
 description = "A refreshingly simple data-driven game engine and app framework"
@@ -51,6 +51,7 @@ default = [
   "zstd",
   "vorbis",
   "x11",
+  "filesystem_watcher",
   "bevy_gizmos",
   "android_shared_stdcxx",
   "tonemapping_luts",
@@ -59,7 +60,7 @@ default = [
 ]
 
 # Force dynamic linking, which improves iterative compile times
-dynamic_linking = ["dep:bevy_dylib", "bevy_internal/dynamic_linking"]
+dynamic_linking = ["bevy_dylib", "bevy_internal/dynamic_linking"]
 
 # Provides animation functionality
 bevy_animation = ["bevy_internal/bevy_animation"]
@@ -193,14 +194,14 @@ symphonia-vorbis = ["bevy_internal/symphonia-vorbis"]
 # WAV audio format support (through symphonia)
 symphonia-wav = ["bevy_internal/symphonia-wav"]
 
+# Enable watching file system for asset hot reload
+filesystem_watcher = ["bevy_internal/filesystem_watcher"]
+
 # Enable serialization support through serde
 serialize = ["bevy_internal/serialize"]
 
 # Enables multithreaded parallelism in the engine. Disabling it forces all engine tasks to run on a single thread.
 multi-threaded = ["bevy_internal/multi-threaded"]
-
-# Use async-io's implementation of block_on instead of futures-lite's implementation. This is preferred if your application uses async-io.
-async-io = ["bevy_internal/async-io"]
 
 # Wayland display server support
 wayland = ["bevy_internal/wayland"]
@@ -213,6 +214,9 @@ subpixel_glyph_atlas = ["bevy_internal/subpixel_glyph_atlas"]
 
 # Enable systems that allow for automated testing on CI
 bevy_ci_testing = ["bevy_internal/bevy_ci_testing"]
+
+# Enable the "debug asset server" for hot reloading internal assets
+debug_asset_server = ["bevy_internal/debug_asset_server"]
 
 # Enable animation support, and glTF animation loading
 animation = ["bevy_internal/animation", "bevy_animation"]
@@ -232,9 +236,6 @@ accesskit_unix = ["bevy_internal/accesskit_unix"]
 # Enable assertions to check the validity of parameters passed to glam
 glam_assert = ["bevy_internal/glam_assert"]
 
-# Enable assertions in debug builds to check the validity of parameters passed to glam
-debug_glam_assert = ["bevy_internal/debug_glam_assert"]
-
 # Include a default font, containing only ASCII characters, at the cost of a 20kB binary size increase
 default_font = ["bevy_internal/default_font"]
 
@@ -244,23 +245,15 @@ shader_format_glsl = ["bevy_internal/shader_format_glsl"]
 # Enable support for shaders in SPIR-V
 shader_format_spirv = ["bevy_internal/shader_format_spirv"]
 
-# Enable some limitations to be able to use WebGL2. If not enabled, it will default to WebGPU in Wasm. Please refer to the [WebGL2 and WebGPU](https://github.com/bevyengine/bevy/tree/latest/examples#webgl2-and-webgpu) section of the examples README for more information on how to run Wasm builds with WebGPU.
+# Enable some limitations to be able to use WebGL2. If not enabled, it will default to WebGPU in Wasm
 webgl2 = ["bevy_internal/webgl"]
 
-# Enables the built-in asset processor for processed assets.
-asset_processor = ["bevy_internal/asset_processor"]
-
-# Enables watching the filesystem for Bevy Asset hot-reloading
-file_watcher = ["bevy_internal/file_watcher"]
-
-# Enables watching in memory asset providers for Bevy Asset hot-reloading
-embedded_watcher = ["bevy_internal/embedded_watcher"]
-
 [dependencies]
-bevy_dylib = { path = "crates/bevy_dylib", version = "0.12.0-dev", default-features = false, optional = true }
-bevy_internal = { path = "crates/bevy_internal", version = "0.12.0-dev", default-features = false }
+bevy_dylib = { path = "crates/bevy_dylib", version = "0.11.3", default-features = false, optional = true }
+bevy_internal = { path = "crates/bevy_internal", version = "0.11.3", default-features = false }
 
 [dev-dependencies]
+anyhow = "1.0.4"
 rand = "0.8.0"
 ron = "0.8.0"
 serde = { version = "1", features = ["derive"] }
@@ -268,7 +261,6 @@ bytemuck = "1.7"
 # Needed to poll Task examples
 futures-lite = "1.11.3"
 crossbeam-channel = "0.5.0"
-argh = "0.1.12"
 
 [[example]]
 name = "hello_world"
@@ -298,16 +290,6 @@ doc-scrape-examples = true
 [package.metadata.example.move_sprite]
 name = "Move Sprite"
 description = "Changes the transform of a sprite"
-category = "2D Rendering"
-wasm = true
-
-[[example]]
-name = "2d_viewport_to_world"
-path = "examples/2d/2d_viewport_to_world.rs"
-
-[package.metadata.example.2d_viewport_to_world]
-name = "2D Viewport To World"
-description = "Demonstrates how to use the `Camera::viewport_to_world_2d` method"
 category = "2D Rendering"
 wasm = true
 
@@ -489,17 +471,6 @@ category = "3D Rendering"
 wasm = true
 
 [[example]]
-name = "3d_viewport_to_world"
-path = "examples/3d/3d_viewport_to_world.rs"
-doc-scrape-examples = true
-
-[package.metadata.example.3d_viewport_to_world]
-name = "3D Viewport To World"
-description = "Demonstrates how to use the `Camera::viewport_to_world` method"
-category = "3D Rendering"
-wasm = true
-
-[[example]]
 name = "generate_custom_mesh"
 path = "examples/3d/generate_custom_mesh.rs"
 doc-scrape-examples = true
@@ -617,16 +588,6 @@ doc-scrape-examples = true
 [package.metadata.example.bloom_3d]
 name = "3D Bloom"
 description = "Illustrates bloom configuration using HDR and emissive materials"
-category = "3D Rendering"
-wasm = true
-
-[[example]]
-name = "deferred_rendering"
-path = "examples/3d/deferred_rendering.rs"
-
-[package.metadata.example.deferred_rendering]
-name = "Deferred Rendering"
-description = "Renders meshes with both forward and deferred pipelines"
 category = "3D Rendering"
 wasm = true
 
@@ -1060,13 +1021,13 @@ category = "Assets"
 wasm = true
 
 [[example]]
-name = "custom_asset_reader"
-path = "examples/asset/custom_asset_reader.rs"
+name = "custom_asset_io"
+path = "examples/asset/custom_asset_io.rs"
 doc-scrape-examples = true
 
-[package.metadata.example.custom_asset_reader]
+[package.metadata.example.custom_asset_io]
 name = "Custom Asset IO"
-description = "Implements a custom AssetReader"
+description = "Implements a custom asset io loader"
 category = "Assets"
 wasm = true
 
@@ -1074,25 +1035,12 @@ wasm = true
 name = "hot_asset_reloading"
 path = "examples/asset/hot_asset_reloading.rs"
 doc-scrape-examples = true
-required-features = ["file_watcher"]
 
 [package.metadata.example.hot_asset_reloading]
 name = "Hot Reloading of Assets"
 description = "Demonstrates automatic reloading of assets when modified on disk"
 category = "Assets"
 wasm = true
-
-[[example]]
-name = "asset_processing"
-path = "examples/asset/processing/processing.rs"
-doc-scrape-examples = true
-required-features = ["file_watcher", "asset_processor"]
-
-[package.metadata.example.asset_processing]
-name = "Asset Processing"
-description = "Demonstrates how to process and load custom assets"
-category = "Assets"
-wasm = false
 
 # Async Tasks
 [[example]]
@@ -1170,16 +1118,6 @@ doc-scrape-examples = true
 [package.metadata.example.spatial_audio_3d]
 name = "Spatial Audio 3D"
 description = "Shows how to play spatial audio, and moving the emitter in 3D"
-category = "Audio"
-wasm = true
-
-[[example]]
-name = "pitch"
-path = "examples/audio/pitch.rs"
-
-[package.metadata.example.pitch]
-name = "Pitch"
-description = "Shows how to directly play a simple pitch"
 category = "Audio"
 wasm = true
 
@@ -1307,16 +1245,6 @@ category = "ECS (Entity Component System)"
 wasm = true
 
 [[example]]
-name = "one_shot_systems"
-path = "examples/ecs/one_shot_systems.rs"
-
-[package.metadata.example.one_shot_systems]
-name = "One Shot Systems"
-description = "Shows how to flexibly run systems without scheduling them"
-category = "ECS (Entity Component System)"
-wasm = false
-
-[[example]]
 name = "parallel_query"
 path = "examples/ecs/parallel_query.rs"
 doc-scrape-examples = true
@@ -1401,16 +1329,6 @@ doc-scrape-examples = true
 [package.metadata.example.system_param]
 name = "System Parameter"
 description = "Illustrates creating custom system parameters with `SystemParam`"
-category = "ECS (Entity Component System)"
-wasm = false
-
-[[example]]
-name = "time"
-path = "examples/ecs/time.rs"
-
-[package.metadata.example.time]
-name = "Time handling"
-description = "Explains how Time is handled in ECS"
 category = "ECS (Entity Component System)"
 wasm = false
 
@@ -1723,16 +1641,6 @@ doc-scrape-examples = true
 [package.metadata.example.shader_material]
 name = "Material"
 description = "A shader and a material that uses it"
-category = "Shaders"
-wasm = true
-
-[[example]]
-name = "extended_material"
-path = "examples/shader/extended_material.rs"
-
-[package.metadata.example.extended_material]
-name = "Extended Material"
-description = "A custom shader that builds on the standard material"
 category = "Shaders"
 wasm = true
 
